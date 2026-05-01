@@ -1,12 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import FileTree from './FileTree';
 import SearchBar from './SearchBar';
 import TagList from './TagList';
+import TemplatePicker from '../common/TemplatePicker';
 
 interface SidebarProps {
   workspaceRoot: string;
   activeNote: string | null;
   onSelectNote: (path: string) => void;
+  editorContent?: string;
 }
 
 export interface FileTreeNode {
@@ -17,12 +19,14 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-export default function Sidebar({ workspaceRoot, activeNote, onSelectNote }: SidebarProps) {
+export default function Sidebar({ workspaceRoot, activeNote, onSelectNote, editorContent }: SidebarProps) {
   const [files, setFiles] = useState<FileTreeNode[]>([]);
   const [tagFilter, setTagFilter] = useState<number | null>(null);
   const [bookmarkFilter, setBookmarkFilter] = useState(false);
   const [bookmarkedPaths, setBookmarkedPaths] = useState<Set<string>>(new Set());
   const [tagFilteredPaths, setTagFilteredPaths] = useState<Set<string> | null>(null);
+  const [templatePicker, setTemplatePicker] = useState<{ open: boolean; format: 'md' | 'tex' }>({ open: false, format: 'md' });
+  const pendingCreateDir = useRef('');
 
   const loadBookmarks = async () => {
     try {
@@ -79,18 +83,33 @@ export default function Sidebar({ workspaceRoot, activeNote, onSelectNote }: Sid
     return filterTree(files, activeFilter);
   }, [files, tagFilteredPaths, bookmarkFilter, bookmarkedPaths]);
 
-  const handleCreateNote = async (format: 'md' | 'tex') => {
-    const baseName = format === 'md' ? 'Untitled' : 'Untitled';
-    const ext = format === 'md' ? '.md' : '.tex';
-    let fileName = `${baseName}${ext}`;
-    let counter = 1;
+  const handleCreateNote = (format: 'md' | 'tex') => {
+    setTemplatePicker({ open: true, format });
+  };
 
-    while (files.some((f) => f.name === fileName)) {
-      fileName = `${baseName} ${counter}${ext}`;
+  const handleTemplateSelect = async (content: string | null) => {
+    setTemplatePicker({ open: false, format: templatePicker.format });
+    const format = templatePicker.format;
+    const ext = format === 'md' ? '.md' : '.tex';
+    const dir = pendingCreateDir.current;
+    pendingCreateDir.current = '';
+
+    // Generate unique filename
+    const baseName = format === 'md' ? 'Untitled' : 'Untitled';
+    let fileName = dir ? `${dir}/${baseName}${ext}` : `${baseName}${ext}`;
+    let counter = 1;
+    while (files.some((f) => f.path === fileName || f.name === (dir ? fileName.replace(dir + '/', '') : fileName))) {
+      fileName = dir ? `${dir}/${baseName} ${counter}${ext}` : `${baseName} ${counter}${ext}`;
       counter++;
     }
 
-    await window.mtexAPI.note.create(fileName, format);
+    // Create file with template content or blank
+    if (content) {
+      await window.mtexAPI.note.create(fileName, format);
+      await window.mtexAPI.note.write(fileName, content);
+    } else {
+      await window.mtexAPI.note.create(fileName, format);
+    }
     await loadFiles();
     onSelectNote(fileName);
   };
@@ -136,6 +155,10 @@ export default function Sidebar({ workspaceRoot, activeNote, onSelectNote }: Sid
               onRefresh={loadFiles}
               workspaceRoot={workspaceRoot}
               bookmarkedPaths={bookmarkedPaths}
+              onCreateWithTemplate={(format, dirPath) => {
+                pendingCreateDir.current = dirPath || '';
+                setTemplatePicker({ open: true, format });
+              }}
             />
           </div>
           <TagList
@@ -163,6 +186,14 @@ export default function Sidebar({ workspaceRoot, activeNote, onSelectNote }: Sid
           </button>
         </div>
       </div>
+
+      <TemplatePicker
+        open={templatePicker.open}
+        format={templatePicker.format}
+        currentContent={editorContent}
+        onSelect={handleTemplateSelect}
+        onClose={() => setTemplatePicker({ open: false, format: templatePicker.format })}
+      />
     </aside>
   );
 }

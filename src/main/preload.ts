@@ -42,6 +42,12 @@ export interface MTeXAPI {
   exportPdf: {
     save: (content: string, format: 'md' | 'tex') => Promise<{ success: boolean; pdfBase64?: string }>;
   };
+  templates: {
+    list: (format: 'md' | 'tex') => Promise<Array<{ name: string; filename: string; source: 'builtin' | 'user' }>>;
+    read: (format: 'md' | 'tex', filename: string, source?: string) => Promise<string | null>;
+    saveUser: (format: 'md' | 'tex', name: string, content: string) => Promise<boolean>;
+    deleteUser: (format: 'md' | 'tex', filename: string) => Promise<boolean>;
+  };
   workspace: {
     getConfig: () => Promise<{ workspaceRoot: string | null }>;
     setConfig: (config: unknown) => Promise<boolean>;
@@ -86,6 +92,12 @@ const api: MTeXAPI = {
   },
   exportPdf: {
     save: (content, format) => ipcRenderer.invoke('export:savePdf', content, format),
+  },
+  templates: {
+    list: (format) => ipcRenderer.invoke('templates:list', format),
+    read: (format, filename, source) => ipcRenderer.invoke('templates:read', format, filename, source),
+    saveUser: (format, name, content) => ipcRenderer.invoke('templates:saveUser', format, name, content),
+    deleteUser: (format, filename) => ipcRenderer.invoke('templates:deleteUser', format, filename),
   },
   workspace: {
     getConfig: () => ipcRenderer.invoke('workspace:getConfig'),

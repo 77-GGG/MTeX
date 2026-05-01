@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell } from 'electron';
+import { ipcMain, BrowserWindow, shell, app } from 'electron';
 import path from 'path';
 import crypto from 'crypto';
 import { fileManager, FileTreeNode } from './file-manager';
@@ -254,6 +254,74 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     } catch (e) {
       console.error('[latex:compile] exception:', e);
       return { success: false, errors: [String(e)] };
+    }
+  });
+
+  // ---- Template handlers ----
+
+  const builtinTemplatesDir = path.join(__dirname, '../../resources/templates');
+
+  function getUserTemplatesDir(): string {
+    return path.join(app.getPath('userData'), 'templates');
+  }
+
+  async function listTemplatesIn(dir: string, format: 'md' | 'tex'): Promise<Array<{ name: string; filename: string; source: 'builtin' | 'user' }>> {
+    try {
+      const subDir = path.join(dir, format);
+      const files = await fs.readdir(subDir);
+      return files
+        .filter((f: string) => f.endsWith(format === 'md' ? '.md' : '.tex'))
+        .map((f: string) => ({
+          name: f.replace(/\.(md|tex)$/, ''),
+          filename: f,
+          source: dir === builtinTemplatesDir ? 'builtin' as const : 'user' as const,
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  ipcMain.handle('templates:list', async (_event, format: 'md' | 'tex') => {
+    const builtin = await listTemplatesIn(builtinTemplatesDir, format);
+    const userTpl = await listTemplatesIn(getUserTemplatesDir(), format);
+    // User templates override built-in with same name
+    const userNames = new Set(userTpl.map((t) => t.name));
+    const merged = [...userTpl, ...builtin.filter((t) => !userNames.has(t.name))];
+    return merged;
+  });
+
+  ipcMain.handle('templates:read', async (_event, format: 'md' | 'tex', filename: string, source?: string) => {
+    try {
+      const baseDir = source === 'user' ? getUserTemplatesDir() : builtinTemplatesDir;
+      const filePath = path.join(baseDir, format, filename);
+      const content = await fs.readFile(filePath, 'utf-8');
+      const today = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+      return content.replace(/\{\{date\}\}/g, today);
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle('templates:saveUser', async (_event, format: 'md' | 'tex', name: string, content: string) => {
+    try {
+      const dir = path.join(getUserTemplatesDir(), format);
+      await fs.mkdir(dir, { recursive: true });
+      const ext = format === 'md' ? '.md' : '.tex';
+      const filename = name + ext;
+      await fs.writeFile(path.join(dir, filename), content, 'utf-8');
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle('templates:deleteUser', async (_event, format: 'md' | 'tex', filename: string) => {
+    try {
+      const filePath = path.join(getUserTemplatesDir(), format, filename);
+      await fs.unlink(filePath);
+      return true;
+    } catch {
+      return false;
     }
   });
 

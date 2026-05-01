@@ -101,6 +101,7 @@ export default function App() {
           workspaceRoot={workspaceRoot}
           activeNote={activeNote}
           onSelectNote={setActiveNote}
+          editorContent={editorContent}
         />
 
         {/* Center: Editor */}

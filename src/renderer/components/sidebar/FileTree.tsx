@@ -9,6 +9,7 @@ interface FileTreeProps {
   onRefresh: () => void;
   workspaceRoot: string;
   bookmarkedPaths?: Set<string>;
+  onCreateWithTemplate?: (format: 'md' | 'tex', dirPath?: string) => void;
 }
 
 interface ContextMenuState {
@@ -93,7 +94,7 @@ function FileTreeItem({
   );
 }
 
-export default function FileTree({ files, activeNote, onSelectNote, onRefresh, workspaceRoot, bookmarkedPaths }: FileTreeProps) {
+export default function FileTree({ files, activeNote, onSelectNote, onRefresh, workspaceRoot, bookmarkedPaths, onCreateWithTemplate }: FileTreeProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const workspaceName = getWorkspaceName(workspaceRoot);
@@ -116,8 +117,8 @@ export default function FileTree({ files, activeNote, onSelectNote, onRefresh, w
       return [
         { label: `📂 ${workspaceName}`, disabled: true, action: () => {} },
         { label: '', separator: true, action: () => {} },
-        { label: 'New Markdown Note', shortcut: '⌘N', action: () => createNote('md') },
-        { label: 'New LaTeX Document', action: () => createNote('tex') },
+        { label: 'New Markdown Note', shortcut: '⌘N', action: () => onCreateWithTemplate?.('md') },
+        { label: 'New LaTeX Document', action: () => onCreateWithTemplate?.('tex') },
         { label: 'New Folder', action: () => createFolder() },
         { label: '', separator: true, action: () => {} },
         { label: 'Reveal in Finder', action: () => window.mtexAPI.shell.revealInFinder('') },
@@ -128,8 +129,8 @@ export default function FileTree({ files, activeNote, onSelectNote, onRefresh, w
       return [
         { label: `📁 ${node.name}`, disabled: true, action: () => {} },
         { label: '', separator: true, action: () => {} },
-        { label: 'New Markdown Note', action: () => createNoteInDir(node.path, 'md') },
-        { label: 'New LaTeX Document', action: () => createNoteInDir(node.path, 'tex') },
+        { label: 'New Markdown Note', action: () => onCreateWithTemplate?.('md', node.path) },
+        { label: 'New LaTeX Document', action: () => onCreateWithTemplate?.('tex', node.path) },
         { label: 'New Folder', action: () => createFolderInDir(node.path) },
         { label: '', separator: true, action: () => {} },
         { label: 'Rename', action: () => renameNode(node) },
