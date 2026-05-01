@@ -16,11 +16,13 @@ export default function App() {
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [darkTheme, setDarkTheme] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
 
-  const handleOpenWorkspace = async () => {
+  const handleOpenWorkspace = async (recentDir?: string) => {
     try {
-      const dir = await window.mtexAPI.workspace.openDirectory();
-      if (dir) {
-        setWorkspaceRoot(dir);
+      if (recentDir) {
+        setWorkspaceRoot(recentDir);
+      } else {
+        const dir = await window.mtexAPI.workspace.openDirectory();
+        if (dir) setWorkspaceRoot(dir);
       }
     } catch (err) {
       console.error('Failed to open workspace:', err);
@@ -68,7 +70,8 @@ export default function App() {
   // Native menu events
   useEffect(() => {
     const unsubs = [
-      window.mtexAPI.on('menu:openWorkspace', handleOpenWorkspace),
+      window.mtexAPI.on('menu:openWorkspace', () => handleOpenWorkspace()),
+      window.mtexAPI.on('menu:closeWorkspace', () => setWorkspaceRoot(null)),
       window.mtexAPI.on('menu:newMarkdown', handleNewMarkdown),
       window.mtexAPI.on('menu:newLatex', handleNewLatex),
       window.mtexAPI.on('menu:search', () => setSearchOpen(true)),

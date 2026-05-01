@@ -97,7 +97,23 @@ ipcMain.handle('workspace:openDirectory', async () => {
   if (result.canceled || result.filePaths.length === 0) return null;
   const dir = result.filePaths[0];
   await fileManager.setWorkspace(dir);
+  // Save to recent workspaces
+  try {
+    const db = getDb();
+    db.prepare("DELETE FROM workspace_config WHERE value = ?").run(dir);
+    const idx = db.prepare("SELECT COALESCE(MAX(CAST(REPLACE(key, 'recent_', '') AS INTEGER)), -1) + 1 AS next FROM workspace_config WHERE key LIKE 'recent_%'").get() as { next: number };
+    const key = 'recent_' + String(idx.next).padStart(3, '0');
+    db.prepare("INSERT INTO workspace_config (key, value) VALUES (?, ?)").run(key, dir);
+  } catch { /* ignore */ }
   return dir;
+});
+
+ipcMain.handle('workspace:listRecent', async () => {
+  try {
+    const db = getDb();
+    const rows = db.prepare("SELECT value FROM workspace_config WHERE key LIKE 'recent_%' ORDER BY key DESC LIMIT 10").all() as Array<{ value: string }>;
+    return rows.map((r) => r.value);
+  } catch { return []; }
 });
 
 ipcMain.handle('workspace:getConfig', async () => {

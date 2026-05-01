@@ -52,6 +52,7 @@ export interface MTeXAPI {
     getConfig: () => Promise<{ workspaceRoot: string | null }>;
     setConfig: (config: unknown) => Promise<boolean>;
     openDirectory: () => Promise<string | null>;
+    listRecent: () => Promise<string[]>;
   };
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void;
 }
@@ -103,6 +104,7 @@ const api: MTeXAPI = {
     getConfig: () => ipcRenderer.invoke('workspace:getConfig'),
     setConfig: (config) => ipcRenderer.invoke('workspace:setConfig', config),
     openDirectory: () => ipcRenderer.invoke('workspace:openDirectory'),
+    listRecent: () => ipcRenderer.invoke('workspace:listRecent'),
   },
   on: (channel, callback) => {
     const handler = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args);

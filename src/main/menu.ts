@@ -1,4 +1,4 @@
-import { Menu, BrowserWindow, app } from 'electron';
+import { Menu, BrowserWindow } from 'electron';
 
 export function buildMenu(mainWindow: BrowserWindow): void {
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -25,6 +25,12 @@ export function buildMenu(mainWindow: BrowserWindow): void {
           label: 'Open Workspace...',
           accelerator: 'Cmd+O',
           click: () => { mainWindow.webContents.send('menu:openWorkspace'); },
+        },
+        { type: 'separator' },
+        {
+          label: 'Close Workspace',
+          accelerator: 'Cmd+W',
+          click: () => { mainWindow.webContents.send('menu:closeWorkspace'); },
         },
         { type: 'separator' },
         {
