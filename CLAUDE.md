@@ -14,7 +14,9 @@
 ```bash
 cd /Users/qiguo/Documents/MTeX
 npm run dev          # 启动开发环境（Vite + tsc watch + Electron）
-npm run build        # 完整构建
+npm run build        # 完整编译（tsc + vite build）
+npm run dist         # 完整构建 + electron-builder 打包（跳过签名见下）
+npm run start        # 直接启动 Electron（需先 build）
 ```
 
 ## 技术栈
@@ -95,7 +97,17 @@ Cmd+Shift+F 搜索面板、过滤器（格式/标签）、结果高亮 + 编辑�
 - 模板选择器：单击预览、双击创建、支持 `{{date}}` 占位符
 - 最近打开的工作区：欢迎页显示最近 5 个，菜单 File 保存记录
 - XeLaTeX 编译支持（原生 UTF-8 + ctex 中文包）
-- 自定义应用图标（`resources/icon.icns`）
+- 自定义应用图标（`resources/icon.icns`）：squircle 圆角裁剪 + 10 种标准尺寸 + 透明通道
+
+### ✅ 发布 & 构建 (2026-05-01)
+- `releases/` 文件夹按版本组织：`releases/v0.1.0/` 包含全部构建产物 + README
+- 图标生成脚本 `scripts/generate-icon.py`：从源 PNG → 10 种尺寸 .iconset → .icns
+- electron-builder 输出目录配置为 `releases/`
+- 跳过代码签名（本地开发构建）：
+  ```bash
+  CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist
+  ```
+- arm64 DMG + ZIP 内嵌完整图标；x64 待交叉编译/CI 构建
 
 ### 🔜 后续
 - 修复最近工作区点击偶尔无响应的问题
@@ -132,8 +144,16 @@ MTeX/
 │       │   └── common/ (ErrorBoundary, ContextMenu)
 │       ├── hooks/useDebounce.ts
 │       └── styles/globals.css
-├── dist/                            # 构建输出
-└── resources/                       # 应用图标
+├── dist/                            # 编译输出
+├── releases/                        # 发布产物（按版本组织）
+│   └── v0.1.0/                      #   DMG/ZIP/blockmap + README
+├── resources/                       # 应用图标
+│   ├── icon.icns                    #   最终 .icns（10 种尺寸）
+│   ├── icon.iconset/                #   中间产物（gitignore）
+│   └── icons/                       #   源图素材
+└── scripts/
+    ├── dev.mjs
+    └── generate-icon.py             # 图标生成脚本
 ```
 
 ## 架构约定

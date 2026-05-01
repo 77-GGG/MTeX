@@ -60,7 +60,7 @@
     "appId": "com.mtex.notebook",
     "productName": "MTeX",
     "directories": {
-      "output": "release"
+      "output": "releases"
     },
     "files": [
       "dist/**/*",

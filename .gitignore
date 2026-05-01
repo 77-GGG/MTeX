@@ -1,6 +1,7 @@
 node_modules/
 dist/
-release/
+releases/
+resources/icon.iconset/
 .DS_Store
 *.log
 .env
