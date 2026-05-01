@@ -10,32 +10,31 @@ export interface CompileResult {
   errors: string[];
 }
 
-function detectTexBin(): string | null {
-  const paths = [
-    '/Library/TeX/texbin/pdflatex',  // macOS MacTeX
-    '/usr/bin/pdflatex',              // Linux
-    '/usr/local/texlive/2025/bin/x86_64-linux/pdflatex',
+function detectTexBin(): { latex: string; bibtex: string } | null {
+  const pairs = [
+    { latex: '/Library/TeX/texbin/xelatex', bibtex: '/Library/TeX/texbin/bibtex' },
+    { latex: '/Library/TeX/texbin/pdflatex', bibtex: '/Library/TeX/texbin/bibtex' },
   ];
 
-  for (const p of paths) {
+  for (const p of pairs) {
     try {
-      execSync(`test -x "${p}"`, { stdio: 'ignore' });
+      execSync(`test -x "${p.latex}"`, { stdio: 'ignore' });
       return p;
     } catch { /* continue */ }
   }
   return null;
 }
 
-let texBinPath: string | null = null;
+let texBinPaths: { latex: string; bibtex: string } | null = null;
 
-export function getTexBin(): string | null {
-  if (!texBinPath) texBinPath = detectTexBin();
-  return texBinPath;
+export function getTexBin(): { latex: string; bibtex: string } | null {
+  if (!texBinPaths) texBinPaths = detectTexBin();
+  return texBinPaths;
 }
 
 export async function compileLatex(filePath: string, workspaceRoot: string): Promise<CompileResult> {
-  const pdflatex = getTexBin();
-  if (!pdflatex) {
+  const texBins = getTexBin();
+  if (!texBins) {
     return {
       success: false,
       log: '',
@@ -44,26 +43,25 @@ export async function compileLatex(filePath: string, workspaceRoot: string): Pro
   }
 
   const fullPath = path.join(workspaceRoot, filePath);
-  const dir = path.dirname(fullPath);
+  const sourceDir = path.dirname(fullPath);
   const basename = path.basename(filePath, '.tex');
+  const absPath = path.resolve(fullPath);
 
-  // Create temp directory for build artifacts
+  // Create temp directory for build artifacts (.aux, .log, .pdf)
   const buildDir = path.join(os.tmpdir(), 'mtex-latex-' + Date.now());
   await fs.mkdir(buildDir, { recursive: true });
 
-  // Copy .tex file to build dir
-  const texFile = path.join(buildDir, basename + '.tex');
-  await fs.copyFile(fullPath, texFile);
-
-  const logLines: string[] = [];
   const errors: string[] = [];
 
   return new Promise((resolve) => {
-    const proc = spawn(pdflatex!, [
+    const proc = spawn(texBins.latex, [
       '-interaction=nonstopmode',
       '-output-directory=' + buildDir,
-      texFile,
-    ], { timeout: 60000 });
+      absPath,
+    ], {
+      cwd: sourceDir,
+      timeout: 60000,
+    });
 
     let stdout = '';
     proc.stdout.on('data', (chunk: Buffer) => {
@@ -71,32 +69,37 @@ export async function compileLatex(filePath: string, workspaceRoot: string): Pro
     });
 
     proc.stderr.on('data', (chunk: Buffer) => {
-      const text = chunk.toString();
-      stdout += text;
+      stdout += chunk.toString();
     });
 
     proc.on('close', () => {
-      logLines.push(stdout);
-
-      // Parse errors
+      // Parse errors from log
       const lines = stdout.split('\n');
       for (const line of lines) {
         if (line.startsWith('!')) {
           errors.push(line.substring(1).trim());
-          // Collect context lines
           const idx = lines.indexOf(line);
           if (idx >= 0 && idx + 2 < lines.length) {
-            errors.push('  ' + lines[idx + 1]?.trim() || '');
-            errors.push('  ' + lines[idx + 2]?.trim() || '');
+            const ctx1 = lines[idx + 1]?.trim();
+            const ctx2 = lines[idx + 2]?.trim();
+            if (ctx1) errors.push('  ' + ctx1);
+            if (ctx2) errors.push('  ' + ctx2);
           }
+        }
+      }
+
+      // Check for LaTeX warnings that indicate missing packages
+      for (const line of lines) {
+        if (line.includes('LaTeX Error: File') && line.includes('not found')) {
+          errors.push(line.trim());
         }
       }
 
       const pdfPath = path.join(buildDir, basename + '.pdf');
       fs.access(pdfPath).then(() => {
-        resolve({ success: true, pdfPath, log: logLines.join('\n'), errors });
+        resolve({ success: true, pdfPath, log: stdout, errors });
       }).catch(() => {
-        resolve({ success: false, log: logLines.join('\n'), errors });
+        resolve({ success: false, log: stdout, errors });
       });
     });
 

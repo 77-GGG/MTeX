@@ -225,7 +225,8 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // ---- LaTeX handlers ----
 
   ipcMain.handle('latex:status', async () => {
-    return { available: !!getTexBin() };
+    const bins = getTexBin();
+    return { available: !!bins, compiler: bins ? path.basename(bins.latex) : null };
   });
 
   ipcMain.handle('latex:compile', async (_event, filePath: string) => {
