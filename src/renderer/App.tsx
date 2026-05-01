@@ -3,6 +3,7 @@ import Sidebar from './components/sidebar/Sidebar';
 import EditorPane from './components/editor/EditorPane';
 import PreviewPane from './components/preview/PreviewPane';
 import SearchPanel from './components/search/SearchPanel';
+import CommandPalette from './components/command/CommandPalette';
 import WelcomeScreen from './components/WelcomeScreen';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
@@ -12,6 +13,8 @@ export default function App() {
   const [editorContent, setEditorContent] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchHighlight, setSearchHighlight] = useState('');
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [darkTheme, setDarkTheme] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const handleOpenWorkspace = async () => {
     try {
@@ -28,17 +31,51 @@ export default function App() {
     setEditorContent(content);
   }, []);
 
-  // Cmd+Shift+F to toggle search panel
+  // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'F') {
+      const mod = e.metaKey || e.ctrlKey;
+      // Cmd+Shift+F: search panel
+      if (mod && e.shiftKey && e.key === 'F') {
         e.preventDefault();
         setSearchOpen((v) => !v);
       }
+      // Cmd+P: command palette
+      if (mod && !e.shiftKey && e.key === 'p') {
+        e.preventDefault();
+        setCmdPaletteOpen((v) => !v);
+      }
+      // Cmd+N handled by native menu
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  const handleNewMarkdown = useCallback(async () => {
+    let fileName = 'Untitled.md';
+    let counter = 1;
+    // Simple file creation without checking existing (will be refined)
+    await window.mtexAPI.note.create(fileName, 'md');
+    setActiveNote(fileName);
+  }, []);
+
+  const handleNewLatex = useCallback(async () => {
+    let fileName = 'Untitled.tex';
+    await window.mtexAPI.note.create(fileName, 'tex');
+    setActiveNote(fileName);
+  }, []);
+
+  // Native menu events
+  useEffect(() => {
+    const unsubs = [
+      window.mtexAPI.on('menu:openWorkspace', handleOpenWorkspace),
+      window.mtexAPI.on('menu:newMarkdown', handleNewMarkdown),
+      window.mtexAPI.on('menu:newLatex', handleNewLatex),
+      window.mtexAPI.on('menu:search', () => setSearchOpen(true)),
+      window.mtexAPI.on('menu:commandPalette', () => setCmdPaletteOpen(true)),
+    ];
+    return () => unsubs.forEach((fn) => fn());
+  }, [handleNewMarkdown, handleNewLatex]);
 
   const handleWikilinkClick = useCallback((e: React.MouseEvent) => {
     const target = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null;
@@ -97,6 +134,18 @@ export default function App() {
           setActiveNote(filePath);
           setSearchHighlight(query);
         }}
+      />
+
+      <CommandPalette
+        open={cmdPaletteOpen}
+        onClose={() => setCmdPaletteOpen(false)}
+        workspaceRoot={workspaceRoot}
+        activeNote={activeNote}
+        onOpenFile={setActiveNote}
+        onNewMarkdown={handleNewMarkdown}
+        onNewLatex={handleNewLatex}
+        onOpenSearch={() => { setSearchOpen(true); }}
+        onToggleTheme={() => setDarkTheme((v) => !v)}
       />
     </ErrorBoundary>
   );

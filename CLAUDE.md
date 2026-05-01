@@ -81,8 +81,11 @@ Cmd+Shift+F 搜索面板、过滤器（格式/标签）、结果高亮 + 编辑�
 - 保存 PDF：.md → 隐藏窗口单独渲染 → 打印输出；.tex → 下载已编译 PDF
 - TeX 发行版检测（MacTeX / TeX Live）
 
-### 🔜 Phase 6：命令面板 & 打磨
-Cmd+P 命令面板、键盘快捷键系统、深色/浅色主题完善
+### ✅ Phase 6：命令面板 & 打磨 (2026-05-01)
+- Cmd+P 命令面板（模糊搜索文件 + 命令执行）
+- macOS 原生菜单栏（File/Edit/View/Help）
+- 窗口状态持久化（记住窗口大小，重启恢复）
+- 快捷键：Cmd+N 新建、Cmd+O 打开工作区、Cmd+P 命令面板、Cmd+Shift+F 搜索
 
 ### 🔜 Phase 7：打包分发
 electron-builder macOS DMG + 签名公证 + 自动更新

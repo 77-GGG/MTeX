@@ -3,15 +3,26 @@ import path from 'path';
 import fs from 'fs/promises';
 import { registerIpcHandlers } from './ipc-handlers';
 import { fileManager } from './file-manager';
-import { initDatabase, closeDatabase } from './database';
+import { initDatabase, closeDatabase, getDb } from './database';
+import { buildMenu } from './menu';
 
 const isDev = process.env.NODE_ENV === 'development';
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  // Restore window state
+  let winWidth = 1400, winHeight = 900;
+  try {
+    const db = getDb();
+    const w = db.prepare("SELECT value FROM workspace_config WHERE key='winWidth'").get() as { value: string } | undefined;
+    const h = db.prepare("SELECT value FROM workspace_config WHERE key='winHeight'").get() as { value: string } | undefined;
+    if (w) winWidth = parseInt(w.value);
+    if (h) winHeight = parseInt(h.value);
+  } catch { /* DB not ready yet */ }
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: winWidth,
+    height: winHeight,
     minWidth: 900,
     minHeight: 500,
     title: 'MTeX',
@@ -22,6 +33,17 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
     },
+  });
+
+  // Save window state on resize
+  mainWindow.on('resize', () => {
+    if (!mainWindow) return;
+    const [w, h] = mainWindow.getSize();
+    try {
+      const db = getDb();
+      db.prepare("INSERT OR REPLACE INTO workspace_config (key, value) VALUES ('winWidth', ?)").run(String(w));
+      db.prepare("INSERT OR REPLACE INTO workspace_config (key, value) VALUES ('winHeight', ?)").run(String(h));
+    } catch { /* ignore */ }
   });
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
@@ -45,6 +67,7 @@ app.whenReady().then(() => {
 
   initDatabase();
   createWindow();
+  buildMenu(mainWindow!);
   registerIpcHandlers(mainWindow!);
 });
 
