@@ -86,9 +86,20 @@ Cmd+Shift+F 搜索面板、过滤器（格式/标签）、结果高亮 + 编辑�
 - macOS 原生菜单栏（File/Edit/View/Help）
 - 窗口状态持久化（记住窗口大小，重启恢复）
 - 快捷键：Cmd+N 新建、Cmd+O 打开工作区、Cmd+P 命令面板、Cmd+Shift+F 搜索
+- File → Close Workspace (Cmd+W) 回到欢迎页
+- 欢迎页：最近打开的 5 个工作区（点击直接打开）
 
-### 🔜 Phase 7：打包分发
-electron-builder macOS DMG + 签名公证 + 自动更新
+### ✅ 增强功能 (2026-05-01)
+- 模板系统：7 个内置模板 + 用户自定义模板（保存当前/手动创建/删除）
+- 用户模板存储在 `~/Library/Application Support/mtex/templates/`
+- 模板选择器：单击预览、双击创建、支持 `{{date}}` 占位符
+- 最近打开的工作区：欢迎页显示最近 5 个，菜单 File 保存记录
+- XeLaTeX 编译支持（原生 UTF-8 + ctex 中文包）
+- 自定义应用图标（`resources/icon.icns`）
+
+### 🔜 后续
+- 修复最近工作区点击偶尔无响应的问题
+- Phase 7：打包分发（electron-builder macOS DMG + 签名公证 + 自动更新）
 
 ## 项目结构
 
