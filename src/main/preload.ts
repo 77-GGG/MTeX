@@ -49,8 +49,6 @@ export interface MTeXAPI {
     deleteUser: (format: 'md' | 'tex', filename: string) => Promise<boolean>;
   };
   workspace: {
-    getConfig: () => Promise<{ workspaceRoot: string | null }>;
-    setConfig: (config: unknown) => Promise<boolean>;
     openDirectory: () => Promise<string | null>;
     listRecent: () => Promise<string[]>;
   };
@@ -101,8 +99,6 @@ const api: MTeXAPI = {
     deleteUser: (format, filename) => ipcRenderer.invoke('templates:deleteUser', format, filename),
   },
   workspace: {
-    getConfig: () => ipcRenderer.invoke('workspace:getConfig'),
-    setConfig: (config) => ipcRenderer.invoke('workspace:setConfig', config),
     openDirectory: () => ipcRenderer.invoke('workspace:openDirectory'),
     listRecent: () => ipcRenderer.invoke('workspace:listRecent'),
   },

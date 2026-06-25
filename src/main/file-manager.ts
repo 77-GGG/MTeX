@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { shell } from 'electron';
 import { watch, FSWatcher } from 'chokidar';
 
 export interface FileTreeNode {
@@ -50,14 +51,14 @@ async function buildFileTree(dirPath: string, rootDir: string, depth = 0): Promi
 
     if (entry.isDirectory()) {
       const children = await buildFileTree(fullPath, rootDir, depth + 1);
-      if (children.length > 0 || true) {
-        nodes.push({
-          name: entry.name,
-          path: relativePath,
-          type: 'directory',
-          children,
-        });
-      }
+      // Always include directories, even empty ones, so users can navigate
+      // into and create files inside them.
+      nodes.push({
+        name: entry.name,
+        path: relativePath,
+        type: 'directory',
+        children,
+      });
     } else if (ALLOWED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
       nodes.push({
         name: entry.name,
@@ -83,6 +84,21 @@ export class FileManager {
 
   get workspace(): string | null {
     return this.workspaceRoot;
+  }
+
+  /**
+   * Resolve a workspace-relative path to an absolute path, guaranteeing the
+   * result stays inside the workspace root. Throws on traversal attempts
+   * (../, absolute paths, symlink-style escapes, sibling-prefix tricks).
+   */
+  private resolveSafe(relativePath: string): string {
+    if (!this.workspaceRoot) throw new Error('No workspace open');
+    const root = path.resolve(this.workspaceRoot);
+    const fullPath = path.resolve(root, relativePath);
+    if (fullPath !== root && !fullPath.startsWith(root + path.sep)) {
+      throw new Error('Path traversal detected');
+    }
+    return fullPath;
   }
 
   async setWorkspace(root: string): Promise<void> {
@@ -129,19 +145,18 @@ export class FileManager {
     }
   }
 
+  /** Public: resolve & validate a workspace-relative path (throws on escape). */
+  resolveInWorkspace(relativePath: string): string {
+    return this.resolveSafe(relativePath);
+  }
+
   async listFiles(): Promise<FileTreeNode[]> {
     if (!this.workspaceRoot) return [];
     return buildFileTree(this.workspaceRoot, this.workspaceRoot);
   }
 
   async readFile(relativePath: string): Promise<{ filePath: string; content: string; format: string }> {
-    if (!this.workspaceRoot) throw new Error('No workspace open');
-    const fullPath = path.join(this.workspaceRoot, relativePath);
-
-    // Security: ensure path is within workspace
-    if (!fullPath.startsWith(this.workspaceRoot)) {
-      throw new Error('Path traversal detected');
-    }
+    const fullPath = this.resolveSafe(relativePath);
 
     const content = await fs.readFile(fullPath, 'utf-8');
     return {
@@ -152,12 +167,7 @@ export class FileManager {
   }
 
   async writeFile(relativePath: string, content: string): Promise<void> {
-    if (!this.workspaceRoot) throw new Error('No workspace open');
-    const fullPath = path.join(this.workspaceRoot, relativePath);
-
-    if (!fullPath.startsWith(this.workspaceRoot)) {
-      throw new Error('Path traversal detected');
-    }
+    const fullPath = this.resolveSafe(relativePath);
 
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
 
@@ -168,12 +178,7 @@ export class FileManager {
   }
 
   async createFile(relativePath: string, format: 'md' | 'tex'): Promise<void> {
-    if (!this.workspaceRoot) throw new Error('No workspace open');
-    const fullPath = path.join(this.workspaceRoot, relativePath);
-
-    if (!fullPath.startsWith(this.workspaceRoot)) {
-      throw new Error('Path traversal detected');
-    }
+    const fullPath = this.resolveSafe(relativePath);
 
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
 
@@ -185,35 +190,21 @@ export class FileManager {
   }
 
   async deleteFile(relativePath: string): Promise<void> {
-    if (!this.workspaceRoot) throw new Error('No workspace open');
-    const fullPath = path.join(this.workspaceRoot, relativePath);
+    const fullPath = this.resolveSafe(relativePath);
 
-    if (!fullPath.startsWith(this.workspaceRoot)) {
-      throw new Error('Path traversal detected');
-    }
-
-    await fs.rm(fullPath, { recursive: true });
+    // Move to OS trash instead of hard-deleting — safer & recoverable.
+    await shell.trashItem(fullPath);
   }
 
   async createFolder(relativePath: string): Promise<void> {
-    if (!this.workspaceRoot) throw new Error('No workspace open');
-    const fullPath = path.join(this.workspaceRoot, relativePath);
-
-    if (!fullPath.startsWith(this.workspaceRoot)) {
-      throw new Error('Path traversal detected');
-    }
+    const fullPath = this.resolveSafe(relativePath);
 
     await fs.mkdir(fullPath, { recursive: true });
   }
 
   async renameFile(oldRelativePath: string, newRelativePath: string): Promise<void> {
-    if (!this.workspaceRoot) throw new Error('No workspace open');
-    const oldFullPath = path.join(this.workspaceRoot, oldRelativePath);
-    const newFullPath = path.join(this.workspaceRoot, newRelativePath);
-
-    if (!oldFullPath.startsWith(this.workspaceRoot) || !newFullPath.startsWith(this.workspaceRoot)) {
-      throw new Error('Path traversal detected');
-    }
+    const oldFullPath = this.resolveSafe(oldRelativePath);
+    const newFullPath = this.resolveSafe(newRelativePath);
 
     await fs.mkdir(path.dirname(newFullPath), { recursive: true });
     await fs.rename(oldFullPath, newFullPath);

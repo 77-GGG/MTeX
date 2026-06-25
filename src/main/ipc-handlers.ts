@@ -15,9 +15,15 @@ function hashContent(content: string): string {
 }
 
 function indexFile(filePath: string, content: string, format: 'md' | 'tex'): void {
+  const h = hashContent(content);
+  // Fast path: content unchanged since last index — skip the expensive
+  // plain-text extraction and just refresh the timestamp.
+  if (!searchEngine.needsReindex(filePath, h)) {
+    searchEngine.touchModified(filePath);
+    return;
+  }
   const plainContent = extractPlainContent(content, format);
   const title = extractTitle(filePath, content, format);
-  const h = hashContent(content);
   searchEngine.indexNote(filePath, format, title, plainContent, h, Buffer.byteLength(content, 'utf-8'), plainContent.split(/\s+/).filter(Boolean).length);
 }
 
@@ -50,12 +56,12 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
     const fileTree = await fileManager.listFiles();
 
-    // Scan and index existing files — await completion so search works immediately
-    try {
-      await scanAndIndexFiles(fileTree);
-    } catch {
+    // Index existing files in the background so the file tree renders
+    // immediately. Search results become available as indexing completes;
+    // unchanged files are skipped cheaply via content-hash short-circuit.
+    void scanAndIndexFiles(fileTree).catch(() => {
       // non-fatal
-    }
+    });
 
     return fileTree;
   });
@@ -186,8 +192,12 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('shell:revealInFinder', async (_event, filePath: string) => {
     if (!fileManager.workspace) return;
-    const fullPath = path.join(fileManager.workspace, filePath);
-    shell.showItemInFolder(fullPath);
+    try {
+      const fullPath = fileManager.resolveInWorkspace(filePath);
+      shell.showItemInFolder(fullPath);
+    } catch {
+      // path traversal attempt — ignore
+    }
   });
 
   // ---- Bookmarks handlers ----
@@ -233,23 +243,26 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     if (!fileManager.workspace) {
       return { success: false, errors: ['No workspace open'] };
     }
+    // Only compile .tex files that live inside the workspace.
+    if (!filePath.endsWith('.tex')) {
+      return { success: false, errors: ['Not a .tex file'] };
+    }
+    try {
+      fileManager.resolveInWorkspace(filePath);
+    } catch {
+      return { success: false, errors: ['Invalid file path'] };
+    }
     try {
       const result = await compileLatex(filePath, fileManager.workspace);
-      console.log('[latex:compile] success:', result.success, 'pdfPath:', result.pdfPath);
       if (result.success && result.pdfPath) {
-        // Verify PDF exists
+        // Verify the PDF was actually produced before handing back a URL.
         try {
-          const stat = await fs.stat(result.pdfPath);
-          console.log('[latex:compile] PDF exists, size:', stat.size);
+          await fs.stat(result.pdfPath);
         } catch {
-          console.log('[latex:compile] PDF NOT FOUND at', result.pdfPath);
           return { success: false, errors: ['PDF file not found'] };
         }
-        const pdfUrl = 'local-pdf://' + result.pdfPath;
-        console.log('[latex:compile] returning pdfUrl:', pdfUrl);
-        return { ...result, pdfUrl };
+        return { ...result, pdfUrl: 'local-pdf://' + result.pdfPath };
       }
-      console.log('[latex:compile] compile errors:', result.errors);
       return result;
     } catch (e) {
       console.error('[latex:compile] exception:', e);
@@ -263,6 +276,25 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   function getUserTemplatesDir(): string {
     return path.join(app.getPath('userData'), 'templates');
+  }
+
+  /**
+   * Resolve a template path inside `baseDir`, rejecting any path traversal.
+   * `segments` come from the renderer and are otherwise untrusted.
+   */
+  function safeTemplatePath(baseDir: string, ...segments: string[]): string {
+    const root = path.resolve(baseDir);
+    const full = path.resolve(root, ...segments);
+    if (full !== root && !full.startsWith(root + path.sep)) {
+      throw new Error('Invalid template path');
+    }
+    return full;
+  }
+
+  /** A template name must be a single, safe filename component. */
+  function isSafeName(name: string): boolean {
+    return !!name && !name.includes('/') && !name.includes('\\') &&
+      name !== '.' && name !== '..' && !path.isAbsolute(name);
   }
 
   async function listTemplatesIn(dir: string, format: 'md' | 'tex'): Promise<Array<{ name: string; filename: string; source: 'builtin' | 'user' }>> {
@@ -292,8 +324,10 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('templates:read', async (_event, format: 'md' | 'tex', filename: string, source?: string) => {
     try {
+      if (format !== 'md' && format !== 'tex') return null;
+      if (!isSafeName(filename)) return null;
       const baseDir = source === 'user' ? getUserTemplatesDir() : builtinTemplatesDir;
-      const filePath = path.join(baseDir, format, filename);
+      const filePath = safeTemplatePath(baseDir, format, filename);
       const content = await fs.readFile(filePath, 'utf-8');
       const today = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
       return content.replace(/\{\{date\}\}/g, today);
@@ -304,11 +338,13 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('templates:saveUser', async (_event, format: 'md' | 'tex', name: string, content: string) => {
     try {
+      if (format !== 'md' && format !== 'tex') return false;
+      if (!isSafeName(name)) return false;
       const dir = path.join(getUserTemplatesDir(), format);
       await fs.mkdir(dir, { recursive: true });
       const ext = format === 'md' ? '.md' : '.tex';
-      const filename = name + ext;
-      await fs.writeFile(path.join(dir, filename), content, 'utf-8');
+      const filePath = safeTemplatePath(getUserTemplatesDir(), format, name + ext);
+      await fs.writeFile(filePath, content, 'utf-8');
       return true;
     } catch {
       return false;
@@ -317,7 +353,9 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('templates:deleteUser', async (_event, format: 'md' | 'tex', filename: string) => {
     try {
-      const filePath = path.join(getUserTemplatesDir(), format, filename);
+      if (format !== 'md' && format !== 'tex') return false;
+      if (!isSafeName(filename)) return false;
+      const filePath = safeTemplatePath(getUserTemplatesDir(), format, filename);
       await fs.unlink(filePath);
       return true;
     } catch {

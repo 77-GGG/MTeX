@@ -148,6 +148,19 @@ export class SearchEngine {
     }
   }
 
+  /** Cheap check: is the on-disk content already indexed with this hash? */
+  needsReindex(filePath: string, contentHash: string): boolean {
+    const db = getDb();
+    const existing = db.prepare('SELECT content_hash FROM notes WHERE file_path = ?').get(filePath) as { content_hash: string } | undefined;
+    return !existing || existing.content_hash !== contentHash;
+  }
+
+  /** Bump modified_at without touching the (unchanged) indexed content. */
+  touchModified(filePath: string): void {
+    const db = getDb();
+    db.prepare("UPDATE notes SET modified_at = datetime('now') WHERE file_path = ?").run(filePath);
+  }
+
   indexNote(filePath: string, format: 'md' | 'tex', title: string, plainContent: string, contentHash: string, fileSize: number, wordCount: number): void {
     const db = getDb();
     const existing = db.prepare('SELECT id, content_hash FROM notes WHERE file_path = ?').get(filePath) as { id: number; content_hash: string } | undefined;
@@ -171,17 +184,6 @@ export class SearchEngine {
   removeNote(filePath: string): void {
     const db = getDb();
     db.prepare('DELETE FROM notes WHERE file_path = ?').run(filePath);
-  }
-
-  removeByPrefix(dirPath: string): void {
-    const db = getDb();
-    db.prepare('DELETE FROM notes WHERE file_path LIKE ?').run(`${dirPath}/%`);
-  }
-
-  reindexAll(notes: Array<{ filePath: string; format: 'md' | 'tex'; title: string; plainContent: string }>): void {
-    // Bulk reindex: clear and re-insert
-    // This is called on workspace open to sync DB with filesystem
-    // For simplicity, we do incremental updates via indexNote
   }
 
   addSearchHistory(query: string, resultCount: number): void {

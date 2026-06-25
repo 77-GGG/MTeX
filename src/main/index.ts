@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, net, shell } from 'electron';
 import path from 'path';
+import os from 'os';
 import fs from 'fs/promises';
 import { registerIpcHandlers } from './ipc-handlers';
 import { fileManager } from './file-manager';
@@ -31,8 +32,27 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
+  });
+
+  // Navigation hardening: keep the renderer pinned to its own app content.
+  // External links open in the default browser; in-app navigation is blocked.
+  const allowedOrigin = isDev && process.env.VITE_DEV_SERVER_URL
+    ? new URL(process.env.VITE_DEV_SERVER_URL).origin
+    : null;
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const isDevServer = allowedOrigin && url.startsWith(allowedOrigin);
+    if (!isDevServer && !url.startsWith('file://')) {
+      event.preventDefault();
+      if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   // Save window state on resize
@@ -59,10 +79,24 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Register custom protocol for serving local PDFs
+  // Register custom protocol for serving local PDFs.
+  // Hardened: only serve *.pdf files that live inside the OS temp dir
+  // (where compileLatex writes its build artifacts). This prevents the
+  // renderer from reading arbitrary local files via local-pdf://.
+  const tmpRoot = path.resolve(os.tmpdir());
   protocol.handle('local-pdf', (request) => {
-    const filePath = request.url.replace('local-pdf://', '');
-    return net.fetch('file://' + filePath);
+    const deny = () => new Response('Forbidden', { status: 403 });
+    try {
+      const raw = decodeURIComponent(request.url.slice('local-pdf://'.length));
+      const filePath = path.resolve(raw);
+      const insideTmp = filePath === tmpRoot || filePath.startsWith(tmpRoot + path.sep);
+      if (!insideTmp || path.extname(filePath).toLowerCase() !== '.pdf') {
+        return deny();
+      }
+      return net.fetch('file://' + filePath);
+    } catch {
+      return deny();
+    }
   });
 
   initDatabase();
@@ -114,13 +148,4 @@ ipcMain.handle('workspace:listRecent', async () => {
     const rows = db.prepare("SELECT value FROM workspace_config WHERE key LIKE 'recent_%' ORDER BY key DESC LIMIT 10").all() as Array<{ value: string }>;
     return rows.map((r) => r.value);
   } catch { return []; }
-});
-
-ipcMain.handle('workspace:getConfig', async () => {
-  return { workspaceRoot: null };
-});
-
-ipcMain.handle('workspace:setConfig', async (_event, config) => {
-  // TODO: persist to database
-  return true;
 });

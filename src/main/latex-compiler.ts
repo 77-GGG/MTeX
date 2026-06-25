@@ -56,6 +56,8 @@ export async function compileLatex(filePath: string, workspaceRoot: string): Pro
   return new Promise((resolve) => {
     const proc = spawn(texBins.latex, [
       '-interaction=nonstopmode',
+      // Disable \write18 shell-escape so a malicious .tex cannot run commands.
+      '-no-shell-escape',
       '-output-directory=' + buildDir,
       absPath,
     ], {
