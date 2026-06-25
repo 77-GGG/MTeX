@@ -6,9 +6,10 @@ interface PreviewPaneProps {
   format: 'md' | 'tex';
   visible: boolean;
   notePath?: string | null;
+  workspaceRoot?: string | null;
 }
 
-export default function PreviewPane({ content, format, visible, notePath }: PreviewPaneProps) {
+export default function PreviewPane({ content, format, visible, notePath, workspaceRoot }: PreviewPaneProps) {
   const [compiling, setCompiling] = useState(false);
   const [compileLog, setCompileLog] = useState('');
   const [compileErrors, setCompileErrors] = useState<string[]>([]);
@@ -167,7 +168,7 @@ export default function PreviewPane({ content, format, visible, notePath }: Prev
     <div className="flex flex-col h-full min-h-0">
       {toolbar}
       <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
-        <MarkdownPreview content={content} />
+        <MarkdownPreview content={content} workspaceRoot={workspaceRoot} />
       </div>
     </div>
   );

@@ -1,7 +1,11 @@
 import fs from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 import { shell } from 'electron';
 import { watch, FSWatcher } from 'chokidar';
+
+// Image formats accepted for paste/drop-to-insert.
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
 
 export interface FileTreeNode {
   name: string;
@@ -200,6 +204,30 @@ export class FileManager {
     const fullPath = this.resolveSafe(relativePath);
 
     await fs.mkdir(fullPath, { recursive: true });
+  }
+
+  /**
+   * Save a pasted/dropped image into `<workspace>/assets/` and return the
+   * workspace-relative path (POSIX-style) to embed in markdown.
+   * Files are named by content hash so identical images are de-duplicated.
+   */
+  async saveAsset(data: Uint8Array, ext: string): Promise<string> {
+    if (!this.workspaceRoot) throw new Error('No workspace open');
+    const safeExt = (ext || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const finalExt = IMAGE_EXTENSIONS.has(safeExt) ? safeExt : 'png';
+
+    const hash = crypto.createHash('sha256').update(data).digest('hex').slice(0, 12);
+    const relativePath = path.posix.join('assets', `img-${hash}.${finalExt}`);
+    const fullPath = this.resolveSafe(relativePath);
+
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    // De-dup: only write if it doesn't already exist.
+    try {
+      await fs.access(fullPath);
+    } catch {
+      await fs.writeFile(fullPath, data);
+    }
+    return relativePath;
   }
 
   async renameFile(oldRelativePath: string, newRelativePath: string): Promise<void> {

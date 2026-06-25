@@ -9,10 +9,14 @@ export interface MTeXAPI {
     rename: (oldPath: string, newPath: string) => Promise<void>;
     list: (directory: string) => Promise<unknown[]>;
     createFolder: (dirPath: string) => Promise<void>;
+    saveAsset: (data: Uint8Array, ext: string) => Promise<string>;
   };
   search: {
     query: (params: unknown) => Promise<unknown[]>;
     suggestions: (prefix: string) => Promise<string[]>;
+  };
+  links: {
+    backlinks: (filePath: string) => Promise<Array<{ filePath: string; title: string }>>;
   };
   tags: {
     list: () => Promise<unknown[]>;
@@ -64,10 +68,14 @@ const api: MTeXAPI = {
     rename: (oldPath, newPath) => ipcRenderer.invoke('note:rename', oldPath, newPath),
     list: (directory) => ipcRenderer.invoke('note:list', directory),
     createFolder: (dirPath) => ipcRenderer.invoke('note:createFolder', dirPath),
+    saveAsset: (data, ext) => ipcRenderer.invoke('note:saveAsset', data, ext),
   },
   search: {
     query: (params) => ipcRenderer.invoke('search:query', params),
     suggestions: (prefix) => ipcRenderer.invoke('search:suggestions', prefix),
+  },
+  links: {
+    backlinks: (filePath) => ipcRenderer.invoke('links:backlinks', filePath),
   },
   tags: {
     list: () => ipcRenderer.invoke('tags:list'),

@@ -109,8 +109,39 @@ Cmd+Shift+F 搜索面板、过滤器（格式/标签）、结果高亮 + 编辑�
   ```
 - arm64 DMG + ZIP 内嵌完整图标；x64 待交叉编译/CI 构建
 
+### ✅ 安全加固 & 性能优化 (2026-06-25)
+**安全修复（commit a3ecb45）：**
+- 模板 `read/saveUser/deleteUser` 路径穿越 → `safeTemplatePath` + `isSafeName` 校验
+- `local-pdf://` 任意文件读 → 限定 `os.tmpdir()` 内的 `.pdf`，越界返回 403
+- LaTeX 编译加 `-no-shell-escape`，并校验 `.tex` 须在工作区内
+- 新增 `will-navigate` / `setWindowOpenHandler` 导航防护，外链走 `shell.openExternal`
+- file-manager 路径校验统一为 `resolveSafe`（修复 `startsWith` 前缀分隔符瑕疵）
+- `webPreferences.sandbox` 改为 `true`；`revealInFinder` 加工作区校验
+- 删除文件改用 `shell.trashItem`（移废纸篓，可恢复，跨平台）
+
+**性能与代码质量：**
+- `note:list` 全量索引改为后台异步，文件树立即渲染不阻塞
+- `indexFile` 增加 content-hash 短路，未变更文件跳过 `extractPlainContent`
+- 删除死代码 `reindexAll` / `removeByPrefix`；删除未用的 `workspace:getConfig/setConfig` stub
+- 清理 `latex:compile` 调试 `console.log`；修复 `(children.length > 0 || true)` 恒真条件
+
+### ✅ 新功能：图片插入 & 反向链接 (2026-06-25)
+**图片粘贴/拖拽插入：**
+- 编辑器拦截 `paste`/`drop`（CodeMirror `domEventHandlers`），图片 → `note.saveAsset` 二进制写入工作区 `assets/`，按内容 hash 命名去重，光标处插入 `![alt](assets/...)`
+- 新增 `mtex-asset://` 自定义协议（仅放行工作区内的图片扩展名，越界 403）；CSP `img-src` 加 `mtex-asset:`
+- MarkdownPreview 用 DOMPurify `afterSanitizeAttributes` 钩子把相对图片路径重写为 `mtex-asset://` 绝对 URL
+
+**反向链接面板（Backlinks）：**
+- migration v4：新增 `note_wikilinks(source_note_id, target_name)` 表（存字符串目标名，不依赖目标笔记已索引）
+- `indexFile` 用轻量正则提取 `[[target]]`（剥离 `|alias`/路径/扩展名 → 归一 basename），每次索引刷新，自动 backfill 已有笔记
+- `links:backlinks` 反查链接到当前笔记的其他笔记（大小写不敏感、排除自引用）
+- `BacklinksPanel` 组件嵌入右栏底部，无链接时不渲染（零布局影响）
+- 真实 SQLite 逻辑测试 6/6 通过（精确/大小写/子目录/别名/自引用/编辑更新）
+
 ### 🔜 后续
 - 修复最近工作区点击偶尔无响应的问题
+- 中文搜索优化：引入 FTS5 trigram 分词器替代 `%kw%` 全表扫描
+- 构建体积优化：vite `manualChunks` 拆分 2.2MB 主 chunk
 - Phase 7：打包分发（electron-builder macOS DMG + 签名公证 + 自动更新）
 
 ## 项目结构
@@ -140,7 +171,7 @@ MTeX/
 │       │   ├── WelcomeScreen.tsx
 │       │   ├── sidebar/ (Sidebar, FileTree, SearchBar, TagList)
 │       │   ├── editor/ (EditorPane)
-│       │   ├── preview/ (MarkdownPreview, PreviewPane)
+│       │   ├── preview/ (MarkdownPreview, PreviewPane, BacklinksPanel)
 │       │   └── common/ (ErrorBoundary, ContextMenu)
 │       ├── hooks/useDebounce.ts
 │       └── styles/globals.css

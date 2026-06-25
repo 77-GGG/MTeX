@@ -36,6 +36,65 @@ interface EditorPaneProps {
   searchHighlight?: string;
 }
 
+const MIME_TO_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp',
+  'image/svg+xml': 'svg',
+};
+
+// Save an image file into the workspace and insert a markdown image link
+// at the current cursor position.
+async function insertImage(view: EditorView, file: File): Promise<void> {
+  try {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const ext = MIME_TO_EXT[file.type] || file.name.split('.').pop() || 'png';
+    const relativePath = await window.mtexAPI.note.saveAsset(buf, ext);
+    const alt = file.name ? file.name.replace(/\.[^.]+$/, '') : 'image';
+    const snippet = `![${alt}](${relativePath})`;
+    const pos = view.state.selection.main.head;
+    view.dispatch({
+      changes: { from: pos, insert: snippet },
+      selection: { anchor: pos + snippet.length },
+    });
+  } catch (err) {
+    console.error('Image insert failed:', err);
+  }
+}
+
+// CodeMirror extension: intercept pasted/dropped images.
+const imageInsertExtension = EditorView.domEventHandlers({
+  paste(event, view) {
+    const items = event.clipboardData?.items;
+    if (!items) return false;
+    const images = Array.from(items).filter(
+      (it) => it.kind === 'file' && it.type.startsWith('image/'),
+    );
+    if (images.length === 0) return false;
+    event.preventDefault();
+    (async () => {
+      for (const it of images) {
+        const file = it.getAsFile();
+        if (file) await insertImage(view, file);
+      }
+    })();
+    return true;
+  },
+  drop(event, view) {
+    const files = event.dataTransfer?.files;
+    if (!files || files.length === 0) return false;
+    const images = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (images.length === 0) return false;
+    event.preventDefault();
+    (async () => {
+      for (const file of images) await insertImage(view, file);
+    })();
+    return true;
+  },
+});
+
 const baseExtensions = [
   lineNumbers(),
   highlightActiveLineGutter(),
@@ -53,6 +112,7 @@ const baseExtensions = [
   highlightSelectionMatches(),
   crosshairCursor(),
   rectangularSelection(),
+  imageInsertExtension,
   keymap.of([
     ...defaultKeymap,
     ...searchKeymap,

@@ -99,6 +99,26 @@ app.whenReady().then(() => {
     }
   });
 
+  // Serve workspace images for the markdown preview. Hardened: only image
+  // files that live inside the currently-open workspace are served.
+  const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg']);
+  protocol.handle('mtex-asset', (request) => {
+    const deny = () => new Response('Forbidden', { status: 403 });
+    try {
+      const root = fileManager.workspace ? path.resolve(fileManager.workspace) : null;
+      if (!root) return deny();
+      const raw = decodeURIComponent(request.url.slice('mtex-asset://'.length));
+      const filePath = path.resolve(raw);
+      const insideWs = filePath === root || filePath.startsWith(root + path.sep);
+      if (!insideWs || !IMAGE_EXTS.has(path.extname(filePath).toLowerCase())) {
+        return deny();
+      }
+      return net.fetch('file://' + filePath);
+    } catch {
+      return deny();
+    }
+  });
+
   initDatabase();
   createWindow();
   buildMenu(mainWindow!);

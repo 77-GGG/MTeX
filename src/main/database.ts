@@ -189,6 +189,21 @@ function runMigrations(): void {
         END;
       `,
     },
+    {
+      // Wikilink graph for backlinks. We store the link target as a normalized
+      // *name* string (basename without extension) rather than a note id, so a
+      // link is recorded even before its target note has been indexed.
+      version: 4,
+      sql: `
+        CREATE TABLE IF NOT EXISTS note_wikilinks (
+          source_note_id  INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+          target_name     TEXT NOT NULL COLLATE NOCASE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_wikilinks_target ON note_wikilinks(target_name);
+        CREATE INDEX IF NOT EXISTS idx_wikilinks_source ON note_wikilinks(source_note_id);
+      `,
+    },
   ];
 
   for (const migration of migrations) {

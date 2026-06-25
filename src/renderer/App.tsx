@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import Sidebar from './components/sidebar/Sidebar';
 import EditorPane from './components/editor/EditorPane';
 import PreviewPane from './components/preview/PreviewPane';
+import BacklinksPanel from './components/preview/BacklinksPanel';
 import SearchPanel from './components/search/SearchPanel';
 import CommandPalette from './components/command/CommandPalette';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -117,16 +118,24 @@ export default function App() {
           />
         </div>
 
-        {/* Right: Preview */}
+        {/* Right: Preview + backlinks */}
         <div
-          className="flex-1 min-w-0 overflow-y-auto"
+          className="flex-1 min-w-0 flex flex-col overflow-hidden"
           onClick={handleWikilinkClick}
         >
-          <PreviewPane
-            content={editorContent}
-            format={format}
-            visible={true}
-            notePath={activeNote}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <PreviewPane
+              content={editorContent}
+              format={format}
+              visible={true}
+              notePath={activeNote}
+              workspaceRoot={workspaceRoot}
+            />
+          </div>
+          <BacklinksPanel
+            activeNote={activeNote}
+            onOpenNote={setActiveNote}
+            refreshKey={editorContent}
           />
         </div>
       </div>

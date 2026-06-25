@@ -7,7 +7,25 @@ import DOMPurify from 'dompurify';
 interface MarkdownPreviewProps {
   content: string;
   className?: string;
+  workspaceRoot?: string | null;
 }
+
+// Module-level base path, read by the DOMPurify hook below. Relative <img>
+// sources are resolved against the workspace root and rewritten to the
+// hardened mtex-asset:// protocol so the preview can load local images.
+let assetBaseRoot: string | null = null;
+
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.nodeName !== 'IMG') return;
+  const el = node as Element;
+  const src = el.getAttribute('src') || '';
+  if (!assetBaseRoot) return;
+  if (/^(https?:|data:|blob:|mtex-asset:)/i.test(src)) return;
+  // Resolve workspace-relative path → mtex-asset://<absolute>
+  const rel = src.replace(/^\.?\//, '');
+  const abs = assetBaseRoot.replace(/\/+$/, '') + '/' + rel;
+  el.setAttribute('src', 'mtex-asset://' + abs);
+});
 
 function createMarkdownIt(): MarkdownIt {
   const md = new MarkdownIt({
@@ -119,15 +137,16 @@ function getMarkdownIt(): MarkdownIt {
   return mdInstance;
 }
 
-export default function MarkdownPreview({ content, className = '' }: MarkdownPreviewProps) {
+export default function MarkdownPreview({ content, className = '', workspaceRoot }: MarkdownPreviewProps) {
   const html = useMemo(() => {
+    assetBaseRoot = workspaceRoot ?? null;
     const md = getMarkdownIt();
     const rendered = md.render(content);
     return DOMPurify.sanitize(rendered, {
       ADD_ATTR: ['data-target'],
       ADD_TAGS: ['span', 'annotation', 'semantics', 'math', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'msqrt', 'mtext', 'menclose', 'mtable', 'mtr', 'mtd', 'munder', 'mover'],
     });
-  }, [content]);
+  }, [content, workspaceRoot]);
 
   return (
     <div

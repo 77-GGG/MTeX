@@ -18,13 +18,16 @@ function indexFile(filePath: string, content: string, format: 'md' | 'tex'): voi
   const h = hashContent(content);
   // Fast path: content unchanged since last index — skip the expensive
   // plain-text extraction and just refresh the timestamp.
-  if (!searchEngine.needsReindex(filePath, h)) {
+  if (searchEngine.needsReindex(filePath, h)) {
+    const plainContent = extractPlainContent(content, format);
+    const title = extractTitle(filePath, content, format);
+    searchEngine.indexNote(filePath, format, title, plainContent, h, Buffer.byteLength(content, 'utf-8'), plainContent.split(/\s+/).filter(Boolean).length);
+  } else {
     searchEngine.touchModified(filePath);
-    return;
   }
-  const plainContent = extractPlainContent(content, format);
-  const title = extractTitle(filePath, content, format);
-  searchEngine.indexNote(filePath, format, title, plainContent, h, Buffer.byteLength(content, 'utf-8'), plainContent.split(/\s+/).filter(Boolean).length);
+  // Wikilinks: cheap regex, refreshed every time so backlinks stay correct
+  // and pre-existing notes get backfilled on first run after the v4 migration.
+  searchEngine.updateWikilinks(filePath, content);
 }
 
 async function scanAndIndexFiles(nodes: FileTreeNode[]): Promise<void> {
@@ -105,6 +108,10 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     await fileManager.createFolder(dirPath);
   });
 
+  ipcMain.handle('note:saveAsset', async (_event, data: Uint8Array, ext: string) => {
+    return fileManager.saveAsset(data, ext);
+  });
+
   // ---- Search handlers ----
 
   ipcMain.handle('search:query', async (_event, params: SearchParams) => {
@@ -115,6 +122,12 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('search:suggestions', async (_event, prefix: string) => {
     return searchEngine.getSearchSuggestions(prefix);
+  });
+
+  // ---- Backlinks ----
+
+  ipcMain.handle('links:backlinks', async (_event, filePath: string) => {
+    return searchEngine.getBacklinks(filePath);
   });
 
   // ---- Tag handlers ----

@@ -1,5 +1,31 @@
 import { getDb } from './database';
 
+export interface Backlink {
+  filePath: string;
+  title: string;
+}
+
+/** Normalize a wikilink target / file path to a comparable name: basename without extension. */
+function normalizeLinkName(name: string): string {
+  const base = name.split('/').pop() || name;
+  return base.replace(/\.(md|tex)$/i, '').trim();
+}
+
+/** Extract all [[wikilink]] targets from raw note content (alias part stripped). */
+function extractWikilinkTargets(content: string): string[] {
+  const re = /\[\[([^\]]+)\]\]/g;
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    let target = m[1];
+    const pipe = target.indexOf('|');
+    if (pipe >= 0) target = target.slice(0, pipe);
+    const name = normalizeLinkName(target);
+    if (name) out.push(name);
+  }
+  return out;
+}
+
 export interface SearchParams {
   query?: string;
   tags?: number[];
@@ -184,6 +210,38 @@ export class SearchEngine {
   removeNote(filePath: string): void {
     const db = getDb();
     db.prepare('DELETE FROM notes WHERE file_path = ?').run(filePath);
+  }
+
+  /** Re-record the outgoing [[wikilinks]] for a note. Cheap regex; safe to call often. */
+  updateWikilinks(filePath: string, content: string): void {
+    const db = getDb();
+    const note = db.prepare('SELECT id FROM notes WHERE file_path = ?').get(filePath) as { id: number } | undefined;
+    if (!note) return;
+
+    db.prepare('DELETE FROM note_wikilinks WHERE source_note_id = ?').run(note.id);
+
+    const targets = Array.from(new Set(extractWikilinkTargets(content)));
+    if (targets.length === 0) return;
+
+    const insert = db.prepare('INSERT INTO note_wikilinks (source_note_id, target_name) VALUES (?, ?)');
+    const tx = db.transaction((names: string[]) => {
+      for (const name of names) insert.run(note.id, name);
+    });
+    tx(targets);
+  }
+
+  /** Notes that link to the given note via [[wikilink]]. */
+  getBacklinks(filePath: string): Backlink[] {
+    const db = getDb();
+    const name = normalizeLinkName(filePath);
+    if (!name) return [];
+    return db.prepare(`
+      SELECT DISTINCT n.file_path AS filePath, COALESCE(NULLIF(n.title, ''), n.file_path) AS title
+      FROM note_wikilinks w
+      JOIN notes n ON w.source_note_id = n.id
+      WHERE w.target_name = ? COLLATE NOCASE AND n.file_path <> ?
+      ORDER BY title
+    `).all(name, filePath) as Backlink[];
   }
 
   addSearchHistory(query: string, resultCount: number): void {
